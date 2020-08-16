@@ -11,22 +11,25 @@ This is the first challenge in your Advanced Programming Class.
 
 Build Requirements
 ------------------
-```
-# Build Requirements here
-```
+
+* Node v13.12.0
 
 
 How to build
 ------------
-```
-# instructions here
-```
+`N/A`
 
 
 How to Run
 ----------
-```
-# instructions here
+```bash
+# Pass array to test as argument
+
+➜ node solution.js '[1, [1, 3], 4, [1, 2], [[[[1, [2]]]]]]'
+Total length is: 8
+
+➜ node solution.js '[]'
+Total length is: 0
 ```
 
 
