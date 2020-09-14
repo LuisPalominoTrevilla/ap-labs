@@ -153,10 +153,10 @@ int generateReport(char *reportFile)
   }
 
   dprintf(fd, "Pacman Packages Report\n----------------------\n");
-  dprintf(fd, "- Installed packages\t:\t%d\n", summary.installed);
-  dprintf(fd, "- Removed packages\t\t:\t%d\n", summary.removed);
-  dprintf(fd, "- Upgraded packages\t\t:\t%d\n", summary.upgraded);
-  dprintf(fd, "- Current installed\t\t:\t%d\n\n", summary.installed - summary.removed);
+  dprintf(fd, "- Installed packages\t: %d\n", summary.installed);
+  dprintf(fd, "- Removed packages\t: %d\n", summary.removed);
+  dprintf(fd, "- Upgraded packages\t: %d\n", summary.upgraded);
+  dprintf(fd, "- Current installed\t: %d\n\n", summary.installed - summary.removed);
 
   dprintf(fd, "List of packages\n----------------\n");
   for (int i = 0; i < HASH_SIZE; i++)
@@ -164,11 +164,11 @@ int generateReport(char *reportFile)
     pkg = hashtab[i];
     while (pkg != NULL)
     {
-      dprintf(fd, "- Package Name\t\t\t\t:\t%s\n", pkg->name);
-      dprintf(fd, "\t- Install date\t\t\t:\t%s\n", pkg->installedOn);
-      dprintf(fd, "\t- Last update date\t:\t%s\n", pkg->lastUpdated == NULL ? "-" : pkg->lastUpdated);
-      dprintf(fd, "\t- How many updates\t:\t%d\n", pkg->numUpdates);
-      dprintf(fd, "\t- Removal date\t\t\t:\t%s\n", pkg->removalDate == NULL ? "-" : pkg->removalDate);
+      dprintf(fd, "- Package Name\t\t\t: %s\n", pkg->name);
+      dprintf(fd, "\t- Install date\t\t: %s\n", pkg->installedOn);
+      dprintf(fd, "\t- Last update date\t: %s\n", pkg->lastUpdated == NULL ? "-" : pkg->lastUpdated);
+      dprintf(fd, "\t- How many updates\t: %d\n", pkg->numUpdates);
+      dprintf(fd, "\t- Removal date\t\t: %s\n", pkg->removalDate == NULL ? "-" : pkg->removalDate);
       pkg = pkg->next;
     }
   }
