@@ -51,7 +51,7 @@ void __colorizeLog(int fg, int bg, int type, const char *title, const char *text
   }
   else
   {
-    syslog(type, text, args);
+    vsyslog(type, text, args);
   }
 }
 

@@ -4,6 +4,11 @@
 
 int main(int argc, char **argv)
 {
+  if (argc != 2) {
+    printf("Invalid test case\n");
+    return 0;
+  }
+
   printf("%d\n", atoi(argv[1]));
   switch (atoi(argv[1]))
   {
