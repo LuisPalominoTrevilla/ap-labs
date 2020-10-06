@@ -36,14 +36,13 @@ static int isDirectory(char *path);
 static char *joinPath(char *basePath, char *filename);
 
 static int addWatchDir(const char *dir, int level);
-static void removeWatchDir(int wd);
 static struct watched_dir *findWatchDir(int wd);
 static void freeWatchDirs();
 
 int main(int argc, char **argv)
 {
   char *p, *rootDir;
-  struct evt_info prevEvent = {-1, ""};
+  struct evt_info prevEvent = {-1, NULL};
   struct inotify_event *event;
   ssize_t numread;
   char buf[BUF_LEN] __attribute__((aligned(8)));
@@ -112,30 +111,45 @@ static void displayEvent(struct inotify_event *e, struct evt_info *prevEvent)
   struct watched_dir *directory;
   if ((directory = findWatchDir(e->wd)) == NULL)
   {
-    panicf("Received an event but could not retrieve watched directory");
-    exit(1);
+    return;
   }
 
   char *filePath = joinPath(directory->fpath, e->name);
-  warnf("File evt is %s\n", directory->fpath);
-  char *fileType = isDirectory(filePath) ? "Directory" : "File";
+  int isDir = isDirectory(filePath);
+  char *fileType = isDir ? "Directory" : "File";
 
   if (e->mask & IN_CREATE)
   {
+    if (directory->level == 0 && isDir && addWatchDir(filePath, 1) == -1)
+    {
+      panicf("Unable to add watcher to created directory\n");
+      freeWatchDirs();
+      free(filePath);
+      exit(1);
+    }
+
     infof("- [%s - Create] - %s\n", fileType, filePath);
   }
   if (e->mask & IN_DELETE)
   {
-    infof("- [File/Directory - Removal] - %s\n", filePath);
+    infof("- [File - Removal] - %s\n", filePath);
+  }
+  if (e->mask & IN_MOVED_TO && directory->level == 0 && isDir && addWatchDir(filePath, 1) == -1)
+  {
+    panicf("Unable to add watcher to moved directory\n");
+    freeWatchDirs();
+    free(filePath);
+    exit(1);
   }
   if (e->mask & IN_MOVED_TO && prevEvent->cookie == e->cookie)
   {
     infof("- [%s - Rename] - %s -> %s\n", fileType, prevEvent->name, filePath);
   }
 
-  free(filePath);
+  if (prevEvent->name != NULL)
+    free(prevEvent->name);
   prevEvent->cookie = e->cookie;
-  prevEvent->name = e->name;
+  prevEvent->name = filePath;
 }
 
 static int monitorDirTree(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf)
@@ -181,28 +195,6 @@ static int addWatchDir(const char *dir, int level)
   return 0;
 }
 
-static void removeWatchDir(int wd)
-{
-  struct watched_dir *curr = watchDirectories;
-  struct watched_dir *prev;
-  while (curr != NULL)
-  {
-    if (curr->wd == wd)
-    {
-      if (prev != NULL)
-        prev->next = curr->next;
-      else
-        watchDirectories = curr->next;
-
-      free(curr);
-      return;
-    }
-
-    prev = curr;
-    curr = curr->next;
-  }
-}
-
 static struct watched_dir *findWatchDir(int wd)
 {
   struct watched_dir *curr = watchDirectories;
@@ -222,7 +214,6 @@ static void freeWatchDirs()
   struct watched_dir *curr = watchDirectories;
   while (curr != NULL)
   {
-    warnf("Freed directory %s %d %d\n", curr->fpath, curr->level, curr->wd);
     struct watched_dir *next = curr->next;
     free(curr->fpath);
     free(curr);
