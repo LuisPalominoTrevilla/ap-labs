@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE 500
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -6,6 +8,7 @@
 #include <signal.h>
 #include <sys/inotify.h>
 #include "logger.h"
+#include <ftw.h>
 
 #define BUF_LEN (10 * (sizeof(struct inotify_event) + 1))
 
@@ -18,27 +21,28 @@ struct evt_info
 struct watched_dir
 {
   int wd;
-  char *dir;
+  int level;
+  char *fpath;
   struct watched_dir *next;
 };
 
+int inotifyFd;
 struct watched_dir *watchDirectories;
-char *rootDir;
 
-static void displayEvent(struct inotify_event *, struct evt_info *);
+static void displayEvent(struct inotify_event *e, struct evt_info *prevEvent);
 
-static int isDirectory(char *);
-static char *joinPaths(char *[], int);
+static int monitorDirTree(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf);
+static int isDirectory(char *path);
+static char *joinPath(char *basePath, char *filename);
 
-static int addWatchDir(char *, char *, int);
-static void removeWatchDir(int);
-static struct watched_dir *findWatchDir(int);
+static int addWatchDir(const char *dir, int level);
+static void removeWatchDir(int wd);
+static struct watched_dir *findWatchDir(int wd);
 static void freeWatchDirs();
 
 int main(int argc, char **argv)
 {
-  int inotifyFd, wd;
-  char *p;
+  char *p, *rootDir;
   struct evt_info prevEvent = {-1, ""};
   struct inotify_event *event;
   ssize_t numread;
@@ -62,16 +66,14 @@ int main(int argc, char **argv)
   // Create inotify instance
   if ((inotifyFd = inotify_init()) == -1)
   {
-    errorf("Unable to init inotify\n");
+    panicf("Unable to init inotify\n");
     return 0;
   }
 
   infof("Starting File/Directory Monitor on %s\n", rootDir);
-
-  // Add watcher to root directory
-  if (addWatchDir(rootDir, ".", inotifyFd) == -1)
+  if (nftw(rootDir, monitorDirTree, 20, FTW_ACTIONRETVAL) == -1)
   {
-    errorf("Unable to add watcher to directory\n");
+    panicf("Unable to look for directories inside root directory\n");
     return 0;
   }
 
@@ -114,27 +116,37 @@ static void displayEvent(struct inotify_event *e, struct evt_info *prevEvent)
     exit(1);
   }
 
-  char *paths[3] = {rootDir, directory->dir, e->name};
-  char *filePath = joinPaths(paths, 3);
-  warnf("File evt is %s\n", filePath);
+  char *filePath = joinPath(directory->fpath, e->name);
+  warnf("File evt is %s\n", directory->fpath);
   char *fileType = isDirectory(filePath) ? "Directory" : "File";
-  free(filePath);
 
   if (e->mask & IN_CREATE)
   {
-    infof("- [%s - Create] - %s\n", fileType, e->name);
+    infof("- [%s - Create] - %s\n", fileType, filePath);
   }
   if (e->mask & IN_DELETE)
   {
-    infof("- [File/Directory - Removal] - %s\n", e->name);
+    infof("- [File/Directory - Removal] - %s\n", filePath);
   }
   if (e->mask & IN_MOVED_TO && prevEvent->cookie == e->cookie)
   {
-    infof("- [%s - Rename] - %s -> %s\n", fileType, prevEvent->name, e->name);
+    infof("- [%s - Rename] - %s -> %s\n", fileType, prevEvent->name, filePath);
   }
 
+  free(filePath);
   prevEvent->cookie = e->cookie;
   prevEvent->name = e->name;
+}
+
+static int monitorDirTree(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf)
+{
+  if (tflag & FTW_D && addWatchDir(fpath, ftwbuf->level) == -1)
+  {
+    panicf("Unable to add watcher to directory\n");
+    return -1;
+  }
+
+  return ftwbuf->level == 0 ? FTW_CONTINUE : FTW_SKIP_SUBTREE;
 }
 
 static int isDirectory(char *path)
@@ -143,30 +155,16 @@ static int isDirectory(char *path)
   return stat(path, &path_stat) == 0 && S_ISDIR(path_stat.st_mode);
 }
 
-static char *joinPaths(char *paths[], int n)
+static char *joinPath(char *basePath, char *filename)
 {
-  int size = 0;
-  int i;
-  for (i = 0; i < n; i++)
-  {
-    size += strlen(paths[i]);
-  }
-
-  char *joined = malloc(size + n);
-  if (size == 0)
-    return joined;
-
-  strcpy(joined, paths[0]);
-  for (i = 1; i < n; i++)
-  {
-    strcat(joined, "/");
-    strcat(joined, paths[i]);
-  }
-
+  char *joined = malloc(strlen(basePath) + strlen(filename) + 2);
+  strcpy(joined, basePath);
+  strcat(joined, "/");
+  strcat(joined, filename);
   return joined;
 }
 
-static int addWatchDir(char *dir, char *path, int inotifyFd)
+static int addWatchDir(const char *dir, int level)
 {
   int allowedEvents = IN_CREATE | IN_DELETE | IN_MOVE;
   int wd;
@@ -174,13 +172,11 @@ static int addWatchDir(char *dir, char *path, int inotifyFd)
     return -1;
 
   struct watched_dir *newWatchDir = malloc(sizeof(struct watched_dir));
-  newWatchDir->dir = path;
+  newWatchDir->level = level;
   newWatchDir->wd = wd;
-  if (watchDirectories != NULL)
-  {
-    newWatchDir->next = watchDirectories;
-  }
-
+  newWatchDir->fpath = malloc(strlen(dir) + 1);
+  strcpy(newWatchDir->fpath, dir);
+  newWatchDir->next = watchDirectories;
   watchDirectories = newWatchDir;
   return 0;
 }
@@ -226,8 +222,9 @@ static void freeWatchDirs()
   struct watched_dir *curr = watchDirectories;
   while (curr != NULL)
   {
-    warnf("Freed directory %s\n", curr->dir);
+    warnf("Freed directory %s %d %d\n", curr->fpath, curr->level, curr->wd);
     struct watched_dir *next = curr->next;
+    free(curr->fpath);
     free(curr);
     curr = next;
   }
