@@ -218,15 +218,19 @@ int main(int argc, char **argv)
 
   struct stat st;
   stat(srcPath, &st);
-
   srcBuf = malloc(sizeof(char) * st.st_size);
   if (srcBuf == NULL) {
-    errorf("Cannot allocate memory for source buffer\n");
+    panicf("Cannot allocate memory for source buffer\n");
+    fclose(srcFile);
+    return 0;
   }
+
   size_t outputLength = 4 * ((st.st_size + 2) / 3.0) + 3;
   destBuf = malloc(sizeof(char) * (outputLength));
   if (destBuf == NULL) {
-    errorf("Cannot allocate memory for destination buffer\n");
+    panicf("Cannot allocate memory for destination buffer\n");
+    fclose(srcFile);
+    return 0;
   }
 
   int read;
