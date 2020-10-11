@@ -3,9 +3,9 @@
 #include <inttypes.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include "logger.h"
 
-#define MAX_FILE_LEN 4294967295
 #define MAX_PRINT_SIZE 1024
 #define BUF_LEN 1024
 
@@ -175,10 +175,11 @@ void displayProgress()
   infof("%s is %d%% complete\n", encodingMode ? "Encoding" : "Decoding", progress);
 }
 
-void extractFilename(char *dst, const char *filename)
+void extractFilename(char *dest, const char *filename)
 {
   char *ext = strchr(filename, '.');
-  strncpy(dst, filename, ext - filename);
+  strncpy(dest, filename, ext - filename);
+  dest[ext - filename] = '\0';
 }
 
 int main(int argc, char **argv)
@@ -215,28 +216,39 @@ int main(int argc, char **argv)
     return 0;
   }
 
-  srcBuf = malloc(sizeof(char) * MAX_FILE_LEN);
-  destBuf = malloc(sizeof(char) * MAX_FILE_LEN);
+  struct stat st;
+  stat(srcPath, &st);
+
+  srcBuf = malloc(sizeof(char) * st.st_size);
+  if (srcBuf == NULL) {
+    errorf("Cannot allocate memory for source buffer\n");
+  }
+  size_t outputLength = 4 * ((st.st_size + 2) / 3.0) + 3;
+  destBuf = malloc(sizeof(char) * (outputLength));
+  if (destBuf == NULL) {
+    errorf("Cannot allocate memory for destination buffer\n");
+  }
+
   int read;
   char buf[BUF_LEN];
   while ((read = fread(buf, sizeof(char), BUF_LEN, srcFile)) > 0)
   {
-    strcpy(srcBuf + sourceBytes, buf);
+    size_t ncpy = BUF_LEN > st.st_size - sourceBytes ? st.st_size - sourceBytes : BUF_LEN;
+    strncpy(srcBuf + sourceBytes, buf, ncpy);
     sourceBytes += read;
   }
 
   fclose(srcFile);
 
   // Perform operation (encoding/decoding)
-  if (encodingMode && base64encode(srcBuf, sourceBytes, destBuf, MAX_FILE_LEN) != 0)
+  if (encodingMode && base64encode(srcBuf, sourceBytes, destBuf, outputLength) != 0)
   {
     panicf("Unable to encode file\n");
     free(srcBuf);
     free(destBuf);
     return 0;
   }
-  size_t outlen = MAX_FILE_LEN;
-  if (!encodingMode && base64decode(srcBuf, sourceBytes, (unsigned char *)destBuf, &outlen) != 0)
+  if (!encodingMode && base64decode(srcBuf, sourceBytes, (unsigned char *)destBuf, &outputLength) != 0)
   {
     panicf("Unable to decode file\n");
     free(srcBuf);
