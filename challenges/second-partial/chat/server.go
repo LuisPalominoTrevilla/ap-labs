@@ -15,36 +15,66 @@ import (
 )
 
 //!+broadcaster
-type client chan<- string // an outgoing message channel
+type client struct {
+	name    string
+	channel chan<- string // an outgoing message channel
+}
+
+type message struct {
+	message string
+	from    string
+	to      string
+}
 
 var (
 	entering = make(chan client)
 	leaving  = make(chan client)
-	messages = make(chan string) // all incoming client messages
+	messages = make(chan message) // all incoming client messages
 )
 
 func broadcaster() {
-	clients := make(map[client]bool) // all connected clients
+	clients := make(map[string]chan<- string) // all connected clients
 	for {
 		select {
 		case msg := <-messages:
-			// Broadcast incoming message to all
-			// clients' outgoing message channels.
-			for cli := range clients {
-				cli <- msg
+			if msg.to != "" {
+				ch := clients[msg.to]
+				if ch == nil {
+					// TODO: Send feedback to user
+					break
+				}
+				ch <- msg.message
+				break
+			}
+
+			for name := range clients {
+				if msg.from != name {
+					clients[name] <- msg.message
+				}
 			}
 
 		case cli := <-entering:
-			clients[cli] = true
+			clients[cli.name] = cli.channel
 
 		case cli := <-leaving:
-			delete(clients, cli)
-			close(cli)
+			delete(clients, cli.name)
+			close(cli.channel)
 		}
 	}
 }
 
 //!-broadcaster
+
+//!+helpers
+func sendMessage(msg, from, to string) {
+	prompt := from + " > "
+	if from == "" {
+		prompt = "irc-server > "
+	}
+	messages <- message{message: prompt + msg, from: from, to: to}
+}
+
+//!-helpers
 
 //!+handleConn
 func handleConn(conn net.Conn) {
@@ -52,18 +82,19 @@ func handleConn(conn net.Conn) {
 	go clientWriter(conn, ch)
 
 	who := conn.RemoteAddr().String()
-	ch <- "You are " + who
-	messages <- who + " has arrived"
-	entering <- ch
+	sendMessage(who+" has arrived", "", "")
+	entering <- client{name: who, channel: ch}
+	sendMessage("Welcome to the Simple IRC Server", "", who)
+	sendMessage("Your user ["+who+"] is successfully logged", "", who)
 
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
-		messages <- who + ": " + input.Text()
+		sendMessage(input.Text(), who, "")
 	}
 	// NOTE: ignoring potential errors from input.Err()
 
-	leaving <- ch
-	messages <- who + " has left"
+	leaving <- client{name: who, channel: ch}
+	sendMessage(who+" has left", "", "")
 	conn.Close()
 }
 
