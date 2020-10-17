@@ -12,12 +12,15 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 )
 
 //!+broadcaster
 type client struct {
 	name    string
 	channel chan<- string // an outgoing message channel
+	ip      string
+	created time.Time
 }
 
 type message struct {
@@ -27,38 +30,37 @@ type message struct {
 }
 
 var (
-	entering = make(chan client)
-	leaving  = make(chan client)
-	messages = make(chan message) // all incoming client messages
+	entering = make(chan *client)
+	leaving  = make(chan string)
+	messages = make(chan message)
 )
 
 func broadcaster() {
-	clients := make(map[string]chan<- string) // all connected clients
+	clients := make(map[string]*client) // all connected clients
 	for {
 		select {
 		case msg := <-messages:
 			if msg.to != "" {
-				ch := clients[msg.to]
-				if ch == nil {
-					// TODO: Send feedback to user
-					break
+				if cli, exists := clients[msg.to]; exists {
+					cli.channel <- msg.message
 				}
-				ch <- msg.message
 				break
 			}
 
 			for name := range clients {
 				if msg.from != name {
-					clients[name] <- msg.message
+					clients[name].channel <- msg.message
 				}
 			}
 
 		case cli := <-entering:
-			clients[cli.name] = cli.channel
+			clients[cli.name] = cli
 
-		case cli := <-leaving:
-			delete(clients, cli.name)
-			close(cli.channel)
+		case name := <-leaving:
+			if cli, exists := clients[name]; exists {
+				delete(clients, name)
+				close(cli.channel)
+			}
 		}
 	}
 }
@@ -78,23 +80,32 @@ func sendMessage(msg, from, to string) {
 
 //!+handleConn
 func handleConn(conn net.Conn) {
+	tmp := make([]byte, 16)
+	conn.Read(tmp)
+
 	ch := make(chan string) // outgoing client messages
+
+	cli := new(client)
+	cli.name = string(tmp)
+	cli.channel = ch
+	cli.ip = conn.RemoteAddr().String()
+	cli.created = time.Now()
+
 	go clientWriter(conn, ch)
 
-	who := conn.RemoteAddr().String()
-	sendMessage(who+" has arrived", "", "")
-	entering <- client{name: who, channel: ch}
-	sendMessage("Welcome to the Simple IRC Server", "", who)
-	sendMessage("Your user ["+who+"] is successfully logged", "", who)
+	sendMessage(cli.name+" has arrived", "", "")
+	entering <- cli
+	sendMessage("Welcome to the Simple IRC Server", "", cli.name)
+	sendMessage("Your user ["+cli.name+"] is successfully logged", "", cli.name)
 
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
-		sendMessage(input.Text(), who, "")
+		sendMessage(input.Text(), cli.name, "")
 	}
 	// NOTE: ignoring potential errors from input.Err()
 
-	leaving <- client{name: who, channel: ch}
-	sendMessage(who+" has left", "", "")
+	leaving <- cli.name
+	sendMessage(cli.name+" has left", "", "")
 	conn.Close()
 }
 

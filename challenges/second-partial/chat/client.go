@@ -8,6 +8,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -15,15 +16,21 @@ import (
 	"os"
 )
 
+var username *string
+
 //!+
 func main() {
+	username = flag.String("user", "anonymous", "username")
+	flag.Parse()
+	fmt.Println("Hi ", *username)
 	conn, err := net.Dial("tcp", "localhost:8000")
 	if err != nil {
 		log.Fatal(err)
 	}
+	conn.Write([]byte(*username))
 	done := make(chan struct{})
 	go displayMessages(os.Stdout, conn, done)
-	go mustCopy(conn, os.Stdin)
+	go sendMessages(conn, os.Stdin)
 	<-done // wait for background goroutine to finish
 	conn.Close()
 }
@@ -31,28 +38,24 @@ func main() {
 //!-
 
 func displayMessages(dst io.Writer, src io.Reader, done chan struct{}) {
-	reader := bufio.NewReader(src)
-	for {
-		message, err := reader.ReadString('\n')
+	reader := bufio.NewScanner(src)
+	for reader.Scan() {
+		_, err := fmt.Fprintf(dst, "\r\033[K\r%s\n%s > ", reader.Text(), *username)
 		if err != nil {
 			log.Fatal(err)
-			break
 		}
-
-		_, wErr := fmt.Fprintf(dst, "\r%s$ > ", message)
-		if wErr != nil {
-			log.Fatal(wErr)
-			break
-		}
+	}
+	if err := reader.Err(); err != nil {
+		log.Fatal(err)
 	}
 	log.Println("done")
 	done <- struct{}{} // signal the main goroutine
 }
 
-func mustCopy(dst io.Writer, src io.Reader) {
+func sendMessages(dst io.Writer, src io.Reader) {
 	reader := bufio.NewReader(src)
 	for {
-		fmt.Print("$ > ")
+		fmt.Printf("%s > ", *username)
 		cmdString, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
