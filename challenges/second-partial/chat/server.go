@@ -80,25 +80,40 @@ func sendMessage(msg, from, to string) {
 	messages <- message{message: prompt + msg, from: from, to: to}
 }
 
-func parseCommand(cmd, cliName string) {
+func parseCommand(cmd string, cli *client) {
 	words := strings.Split(cmd, " ")
 	if len(words) == 0 {
 		return
 	}
 
 	switch words[0] {
+	case "/users":
+		for _, user := range clients {
+			sendMessage(user.name+" - connected since "+user.created.Format("2006-01-02 15:04:05"), "", cli.name)
+		}
 	case "/msg":
 		if len(words) < 3 {
-			sendMessage("Command usage: /msg <user> <msg>", "", cliName)
+			sendMessage("Command usage: /msg <user> <msg>", "", cli.name)
 			break
 		}
-		sendMessage(words[2], cliName, words[1])
+		sendMessage(words[2], cli.name, words[1])
 	case "/time":
 		now := time.Now()
 		tz, _ := now.Zone()
-		sendMessage("Local Time: "+tz+" "+now.Format("15:04"), "", cliName)
+		sendMessage("Local Time: "+tz+" "+now.Format("15:04"), "", cli.name)
+	case "/user":
+		if len(words) < 2 {
+			sendMessage("Command usage: /user <user>", "", cli.name)
+			break
+		}
+		user, exists := clients[words[1]]
+		if !exists {
+			sendMessage("No user named "+words[1]+" found", "", cli.name)
+			break
+		}
+		sendMessage("username: "+user.name+", IP: "+user.ip+", connected since: "+user.created.Format("2006-01-02 15:04:05"), "", cli.name)
 	default:
-		sendMessage(cmd, cliName, "")
+		sendMessage(cmd, cli.name, "")
 	}
 }
 
@@ -132,7 +147,7 @@ func handleConn(conn net.Conn) {
 
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
-		parseCommand(input.Text(), cli.name)
+		parseCommand(input.Text(), cli)
 	}
 	// NOTE: ignoring potential errors from input.Err()
 
