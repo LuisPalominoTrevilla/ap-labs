@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -76,6 +77,22 @@ func sendMessage(msg, from, to string) {
 	messages <- message{message: prompt + msg, from: from, to: to}
 }
 
+func parseCommand(cmd, cliName string) {
+	words := strings.Split(cmd, " ")
+	if len(words) == 0 {
+		return
+	}
+
+	switch words[0] {
+	case "/time":
+		now := time.Now()
+		tz, _ := now.Zone()
+		sendMessage("Local Time: "+tz+" "+now.Format("15:04"), "", cliName)
+	default:
+		sendMessage(cmd, cliName, "")
+	}
+}
+
 //!-helpers
 
 //!+handleConn
@@ -100,7 +117,7 @@ func handleConn(conn net.Conn) {
 
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
-		sendMessage(input.Text(), cli.name, "")
+		parseCommand(input.Text(), cli.name)
 	}
 	// NOTE: ignoring potential errors from input.Err()
 
