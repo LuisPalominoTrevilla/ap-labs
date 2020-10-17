@@ -9,6 +9,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"log"
 	"net"
@@ -84,6 +85,12 @@ func parseCommand(cmd, cliName string) {
 	}
 
 	switch words[0] {
+	case "/msg":
+		if len(words) < 3 {
+			sendMessage("Command usage: /msg <user> <msg>", "", cliName)
+			break
+		}
+		sendMessage(words[2], cliName, words[1])
 	case "/time":
 		now := time.Now()
 		tz, _ := now.Zone()
@@ -99,6 +106,7 @@ func parseCommand(cmd, cliName string) {
 func handleConn(conn net.Conn) {
 	tmp := make([]byte, 16)
 	conn.Read(tmp)
+	tmp = bytes.Trim(tmp, "\x00")
 
 	ch := make(chan string) // outgoing client messages
 
@@ -122,7 +130,7 @@ func handleConn(conn net.Conn) {
 	// NOTE: ignoring potential errors from input.Err()
 
 	leaving <- cli.name
-	sendMessage(cli.name+" has left", "", "")
+	sendMessage("["+cli.name+"]"+" left", "", "")
 	conn.Close()
 }
 
