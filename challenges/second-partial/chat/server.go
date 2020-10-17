@@ -23,6 +23,7 @@ type client struct {
 	channel chan<- string // an outgoing message channel
 	ip      string
 	created time.Time
+	isAdmin bool
 }
 
 type message struct {
@@ -35,10 +36,11 @@ var (
 	entering = make(chan *client)
 	leaving  = make(chan string)
 	messages = make(chan message)
+	clients  map[string]*client
 )
 
 func broadcaster() {
-	clients := make(map[string]*client) // all connected clients
+	clients = make(map[string]*client) // all connected clients
 	for {
 		select {
 		case msg := <-messages:
@@ -115,6 +117,7 @@ func handleConn(conn net.Conn) {
 	cli.channel = ch
 	cli.ip = conn.RemoteAddr().String()
 	cli.created = time.Now()
+	cli.isAdmin = len(clients) == 0
 
 	go clientWriter(conn, ch)
 
@@ -122,6 +125,10 @@ func handleConn(conn net.Conn) {
 	entering <- cli
 	sendMessage("Welcome to the Simple IRC Server", "", cli.name)
 	sendMessage("Your user ["+cli.name+"] is successfully logged", "", cli.name)
+	if cli.isAdmin {
+		sendMessage("Congrats, you were the first user", "", cli.name)
+		sendMessage("You're the new IRC Server ADMIN", "", cli.name)
+	}
 
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
