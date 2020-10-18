@@ -24,6 +24,7 @@ type client struct {
 	ip      string
 	created time.Time
 	isAdmin bool
+	conn    net.Conn
 }
 
 type message struct {
@@ -36,6 +37,7 @@ var (
 	entering = make(chan *client)
 	leaving  = make(chan string)
 	messages = make(chan message)
+	kick     = make(chan string)
 	clients  map[string]*client
 )
 
@@ -59,6 +61,13 @@ func broadcaster() {
 
 		case cli := <-entering:
 			clients[cli.name] = cli
+
+		case name := <-kick:
+			if cli, exists := clients[name]; exists {
+				delete(clients, name)
+				close(cli.channel)
+				cli.conn.Close()
+			}
 
 		case name := <-leaving:
 			if cli, exists := clients[name]; exists {
@@ -112,6 +121,24 @@ func parseCommand(cmd string, cli *client) {
 			break
 		}
 		sendMessage("username: "+user.name+", IP: "+user.ip+", connected since: "+user.created.Format("2006-01-02 15:04:05"), "", cli.name)
+	case "/kick":
+		if !cli.isAdmin {
+			sendMessage("Authorization required", "", cli.name)
+			break
+		}
+		if len(words) < 2 {
+			sendMessage("Command usage: /user <user>", "", cli.name)
+			break
+		}
+		user, exists := clients[words[1]]
+		if !exists {
+			sendMessage("No user named "+words[1]+" found", "", cli.name)
+			break
+		}
+		sendMessage("You're kicked from this channel", "", user.name)
+		sendMessage("Bad language is not allowed on this channel", "", user.name)
+		kick <- user.name
+		sendMessage("["+user.name+"] was kicked from channel for bad language policy violation", "", "")
 	default:
 		sendMessage(cmd, cli.name, "")
 	}
@@ -133,6 +160,7 @@ func handleConn(conn net.Conn) {
 	cli.ip = conn.RemoteAddr().String()
 	cli.created = time.Now()
 	cli.isAdmin = len(clients) == 0
+	cli.conn = conn
 
 	go clientWriter(conn, ch)
 
@@ -149,7 +177,9 @@ func handleConn(conn net.Conn) {
 	for input.Scan() {
 		parseCommand(input.Text(), cli)
 	}
-	// NOTE: ignoring potential errors from input.Err()
+	if err := input.Err(); err != nil {
+		return
+	}
 
 	leaving <- cli.name
 	sendMessage("["+cli.name+"]"+" left", "", "")
