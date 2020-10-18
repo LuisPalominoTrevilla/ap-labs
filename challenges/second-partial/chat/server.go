@@ -204,7 +204,7 @@ func handleConn(conn net.Conn) {
 
 	leaving <- cli.name
 	logInfo("[" + cli.name + "]" + " left")
-	sendMessage("["+cli.name+"]"+" left", "", "")
+	sendMessage("["+cli.name+"]"+" left channel", "", "")
 	conn.Close()
 }
 
