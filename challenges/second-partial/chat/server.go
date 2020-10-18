@@ -150,7 +150,9 @@ func parseCommand(cmd string, cli *client) {
 		sendMessage("["+user.name+"] was kicked from channel for bad language policy violation", "", "")
 		logInfo("[" + user.name + "]" + " was kicked")
 	default:
-		sendMessage(cmd, cli.name, "")
+		if cmd != "" {
+			sendMessage(cmd, cli.name, "")
+		}
 	}
 }
 
@@ -174,8 +176,15 @@ func handleConn(conn net.Conn) {
 
 	go clientWriter(conn, ch)
 
+	if _, exists := clients[cli.name]; exists {
+		ch <- "irc-server > Another user already exists with the same username"
+		close(ch)
+		conn.Close()
+		return
+	}
+
 	logInfo("New connected user [" + cli.name + "]")
-	sendMessage(cli.name+" has arrived", "", "")
+	sendMessage("New connected user ["+cli.name+"]", "", "")
 	entering <- cli
 	sendMessage("Welcome to the Simple IRC Server", "", cli.name)
 	sendMessage("Your user ["+cli.name+"] is successfully logged", "", cli.name)
@@ -217,7 +226,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	logInfo("Simple IRC Server started at" + address)
+	logInfo("Simple IRC Server started at " + address)
 	logInfo("Ready for receiving new clients")
 
 	go broadcaster()
