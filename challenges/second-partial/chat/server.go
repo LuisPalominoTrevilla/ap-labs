@@ -10,6 +10,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -89,6 +90,10 @@ func sendMessage(msg, from, to string) {
 	messages <- message{message: prompt + msg, from: from, to: to}
 }
 
+func logInfo(msg string) {
+	fmt.Printf("irc-server > %s\n", msg)
+}
+
 func parseCommand(cmd string, cli *client) {
 	words := strings.Split(cmd, " ")
 	if len(words) == 0 {
@@ -135,10 +140,15 @@ func parseCommand(cmd string, cli *client) {
 			sendMessage("No user named "+words[1]+" found", "", cli.name)
 			break
 		}
+		if user == cli {
+			sendMessage("You can't kick yourself out", "", cli.name)
+			break
+		}
 		sendMessage("You're kicked from this channel", "", user.name)
 		sendMessage("Bad language is not allowed on this channel", "", user.name)
 		kick <- user.name
 		sendMessage("["+user.name+"] was kicked from channel for bad language policy violation", "", "")
+		logInfo("[" + user.name + "]" + " was kicked")
 	default:
 		sendMessage(cmd, cli.name, "")
 	}
@@ -164,11 +174,13 @@ func handleConn(conn net.Conn) {
 
 	go clientWriter(conn, ch)
 
+	logInfo("New connected user [" + cli.name + "]")
 	sendMessage(cli.name+" has arrived", "", "")
 	entering <- cli
 	sendMessage("Welcome to the Simple IRC Server", "", cli.name)
 	sendMessage("Your user ["+cli.name+"] is successfully logged", "", cli.name)
 	if cli.isAdmin {
+		logInfo("[" + cli.name + "] was promoted as the channel ADMIN")
 		sendMessage("Congrats, you were the first user", "", cli.name)
 		sendMessage("You're the new IRC Server ADMIN", "", cli.name)
 	}
@@ -182,6 +194,7 @@ func handleConn(conn net.Conn) {
 	}
 
 	leaving <- cli.name
+	logInfo("[" + cli.name + "]" + " left")
 	sendMessage("["+cli.name+"]"+" left", "", "")
 	conn.Close()
 }
@@ -196,10 +209,16 @@ func clientWriter(conn net.Conn, ch <-chan string) {
 
 //!+main
 func main() {
-	listener, err := net.Listen("tcp", "localhost:8000")
+	host := flag.String("host", "localhost", "server host")
+	port := flag.String("port", "9000", "server port")
+	flag.Parse()
+	address := *host + ":" + *port
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
 	}
+	logInfo("Simple IRC Server started at" + address)
+	logInfo("Ready for receiving new clients")
 
 	go broadcaster()
 	for {

@@ -21,9 +21,10 @@ var username *string
 //!+
 func main() {
 	username = flag.String("user", "anonymous", "username")
+	server := flag.String("server", "localhost:9000", "server address")
 	flag.Parse()
 	fmt.Println("Hi ", *username)
-	conn, err := net.Dial("tcp", "localhost:8000")
+	conn, err := net.Dial("tcp", *server)
 	if err != nil {
 		log.Fatal(err)
 	}
