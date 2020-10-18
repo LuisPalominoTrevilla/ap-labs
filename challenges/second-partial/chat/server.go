@@ -105,7 +105,7 @@ func parseCommand(cmd string, cli *client) {
 			sendMessage("Command usage: /msg <user> <msg>", "", cli.name)
 			break
 		}
-		sendMessage(words[2], cli.name, words[1])
+		sendMessage(strings.Join(words[2:], " "), cli.name, words[1])
 	case "/time":
 		now := time.Now()
 		tz, _ := now.Zone()

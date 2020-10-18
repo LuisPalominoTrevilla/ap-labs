@@ -48,7 +48,7 @@ func displayMessages(dst io.Writer, src io.Reader, done chan struct{}) {
 	if err := reader.Err(); err != nil {
 		log.Fatal(err)
 	}
-	log.Println("done")
+	log.Println("exit")
 	done <- struct{}{} // signal the main goroutine
 }
 
