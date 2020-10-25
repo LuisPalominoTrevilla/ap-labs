@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"gopl.io/ch5/links"
 )
@@ -33,7 +34,9 @@ func crawl(link node) []node {
 	<-tokens // release the token
 
 	if err != nil {
-		log.Print(err)
+		// Disabled verbose logs because screen gets cluttered with them during tests
+		// Uncomment if you wish to see them
+		// log.Print(err)
 	}
 	next := make([]node, 0, len(list))
 	for _, val := range list {
@@ -49,6 +52,14 @@ type node struct {
 	depth int
 }
 
+func showProcessing() {
+	states := []string{"crawling.", "crawling..", "crawling..."}
+	for i := 0; ; i = (i + 1) % len(states) {
+		time.Sleep(1 * time.Second)
+		fmt.Printf("\r\033[K\r%s", states[i])
+	}
+}
+
 //!+
 func main() {
 	if len(os.Args) < 4 {
@@ -60,7 +71,8 @@ func main() {
 	results := flag.String("results", "results.txt", "The results output file")
 	flag.Parse()
 
-	fmt.Println(*depth, *results)
+	fmt.Printf("Starting web crawler in %s with depth %d\n", os.Args[3], *depth)
+	fmt.Println("All http requests error logs were disabled to improve console readability")
 
 	// Create output file and initialize buffered writer
 	f, err := os.Create(*results)
@@ -80,25 +92,32 @@ func main() {
 		worklist <- []node{node{os.Args[3], 0}}
 	}()
 
+	prevDepth := -1
 	// Crawl the web concurrently.
 	seen := make(map[string]bool)
+	go showProcessing()
 	for ; n > 0; n-- {
 		list := <-worklist
 		for _, link := range list {
-			if link.depth > *depth {
-				break
-			}
-
 			if !seen[link.url] {
+				if link.depth > prevDepth {
+					prevDepth = link.depth
+					log.Printf("\r\033[K\rReached depth %d\n", link.depth)
+				}
 				seen[link.url] = true
-				n++
 				fmt.Fprintf(w, "%s\n", link.url)
+				// Avoid further crawling if link is already at the limit
+				if link.depth+1 > *depth {
+					continue
+				}
+				n++
 				go func(link node) {
 					worklist <- crawl(link)
 				}(link)
 			}
 		}
 	}
+	fmt.Printf("\r\033[K\rFinished crawling. Output is located in %s\n", *results)
 }
 
 //!-
