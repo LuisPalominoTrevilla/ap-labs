@@ -12,6 +12,7 @@ int matSides;
 mat readMatrix(char *filename);
 long *getColumn(int col, mat matrix);
 long *getRow(int row, mat matrix);
+long dotProduct(long *vec1, long *vec2);
 
 int main(int argc, char **argv)
 {
@@ -23,8 +24,27 @@ int main(int argc, char **argv)
     return 0;
   }
 
+  mat matB = readMatrix("matB.dat");
+  if (matB == NULL)
+  {
+    errorf("Could not read matrix B file\n");
+    return 0;
+  }
+
   free(matA);
+  free(matB);
   return 0;
+}
+
+long dotProduct(long *vec1, long *vec2)
+{
+  long result = 0;
+  for (int i = 0; i < matSides; i++)
+  {
+    result += vec1[i] * vec2[i];
+  }
+
+  return result;
 }
 
 long *getColumn(int col, mat matrix)
