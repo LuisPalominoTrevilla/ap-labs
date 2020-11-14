@@ -1,13 +1,17 @@
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include "logger.h"
 
-#define ROWS 2000l
-#define COLS 2000l
+#define MAX_SIDES 2000
 
 typedef long *mat;
 
+int matSides;
+
 mat readMatrix(char *filename);
+long *getColumn(int col, mat matrix);
+long *getRow(int row, mat matrix);
 
 int main(int argc, char **argv)
 {
@@ -19,21 +23,51 @@ int main(int argc, char **argv)
     return 0;
   }
 
-  infof("Read and got %ld %ld\n", matA[0], matA[1]);
-
   free(matA);
   return 0;
+}
+
+long *getColumn(int col, mat matrix)
+{
+  if (col < 0 || col >= matSides)
+    return NULL;
+
+  long *matCol = malloc(sizeof(long) * matSides);
+  if (matCol == NULL)
+  {
+    panicf("Unable to allocate buffer\n");
+    exit(1);
+  }
+  for (int i = 0; i < matSides; i++)
+    matCol[i] = matrix[i * matSides + col];
+
+  return matCol;
+}
+
+long *getRow(int row, mat matrix)
+{
+  if (row < 0 || row >= matSides)
+    return NULL;
+
+  long *matRow = malloc(sizeof(long) * matSides);
+  if (matRow == NULL)
+  {
+    panicf("Unable to allocate buffer\n");
+    exit(1);
+  }
+  for (int n = 0; n < matSides; n++)
+    matRow[n] = matrix[row * matSides + n];
+
+  return matRow;
 }
 
 mat readMatrix(char *filename)
 {
   FILE *f = fopen(filename, "r");
   if (f == NULL)
-  {
     return NULL;
-  }
 
-  size_t n = ROWS * COLS;
+  size_t n = pow(MAX_SIDES, 2);
   mat matrix = (mat)malloc(sizeof(long) * n);
   if (matrix == NULL)
   {
@@ -45,10 +79,9 @@ mat readMatrix(char *filename)
   size_t len = 30;
   int i = 0;
   while (getline(buf, &len, f) != -1 && i < n)
-  {
     matrix[i++] = strtol(*buf, NULL, 10);
-  }
 
+  matSides = sqrt(i);
   fclose(f);
   return matrix;
 }
