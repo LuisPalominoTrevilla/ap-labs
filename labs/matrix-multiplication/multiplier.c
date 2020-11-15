@@ -41,14 +41,27 @@ int main(int argc, char **argv)
     return 0;
   }
 
-  if (strcmp(argv[1], "-n") != 0 || strcmp(argv[3], "-out") != 0)
+  if (strcmp(argv[1], "-n") == 0 && strcmp(argv[3], "-out") == 0)
+  {
+    NUM_BUFFERS = atoi(argv[2]);
+    RESULT_MATRIX_FILE = argv[4];
+  }
+  else if (strcmp(argv[1], "-out") == 0 && strcmp(argv[3], "-n") == 0)
+  {
+    RESULT_MATRIX_FILE = argv[2];
+    NUM_BUFFERS = atoi(argv[4]);
+  }
+  else
   {
     errorf("Usage: ./multiplier -n [buffers] -out [file]\n");
     return 0;
   }
 
-  NUM_BUFFERS = atoi(argv[2]);
-  RESULT_MATRIX_FILE = argv[4];
+  if (NUM_BUFFERS < 2)
+  {
+    errorf("At least 2 buffers are required\n");
+    return 0;
+  }
 
   mat matA = readMatrix("matA.dat");
   if (matA == NULL)
