@@ -2,26 +2,26 @@
 #include <math.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <string.h>
 #include "logger.h"
 
-#define N 400
+#define N 2000
 
 typedef long *mat;
 
-char *RESULT_MATRIX_FILE = "result.dat";
-int NUM_BUFFERS = 800;
+char *RESULT_MATRIX_FILE;
+int NUM_BUFFERS;
 
 pthread_mutex_t *mutexes;
 long **buffers;
 
 struct arg_struct
 {
-  int idx;
   int row;
   int col;
   mat matA;
   mat matB;
-  mat result;
+  long *result;
 };
 
 mat readMatrix(char *filename);
@@ -35,6 +35,21 @@ int releaseLock(int lock);
 int main(int argc, char **argv)
 {
   initLogger("stdout");
+  if (argc < 5)
+  {
+    errorf("Usage: ./multiplier -n [buffers] -out [file]\n");
+    return 0;
+  }
+
+  if (strcmp(argv[1], "-n") != 0 || strcmp(argv[3], "-out") != 0)
+  {
+    errorf("Usage: ./multiplier -n [buffers] -out [file]\n");
+    return 0;
+  }
+
+  NUM_BUFFERS = atoi(argv[2]);
+  RESULT_MATRIX_FILE = argv[4];
+
   mat matA = readMatrix("matA.dat");
   if (matA == NULL)
   {
@@ -125,7 +140,7 @@ static void *thread_operation(void *arguments)
     return (void *)-1;
   }
 
-  args->result[args->idx] = dotProduct(buffers[l1], buffers[l2]);
+  *args->result = dotProduct(buffers[l1], buffers[l2]);
   free(buffers[l1]);
   free(buffers[l2]);
   free(arguments);
@@ -137,38 +152,38 @@ static void *thread_operation(void *arguments)
 mat multiply(mat matA, mat matB)
 {
   size_t matSize = pow(N, 2);
-  pthread_t *threads = malloc(sizeof(pthread_t) * matSize);
+  pthread_t *threads = malloc(sizeof(pthread_t) * N);
   mat result = malloc(sizeof(long) * matSize);
   for (int i = 0; i < N; i++)
   {
     for (int j = 0; j < N; j++)
     {
-      int idx = i * N + j;
       struct arg_struct *threadArgs = (struct arg_struct *)malloc(sizeof(struct arg_struct));
-      threadArgs->idx = idx;
+      int idx = i * N + j;
       threadArgs->row = i;
       threadArgs->col = j;
       threadArgs->matA = matA;
       threadArgs->matB = matB;
-      threadArgs->result = result;
-      pthread_create(&threads[idx], NULL, thread_operation, threadArgs);
+      threadArgs->result = &result[idx];
+      pthread_create(&threads[j], NULL, thread_operation, threadArgs);
+    }
+
+    int error = 0;
+    for (int i = 0; i < N; i++)
+    {
+      if (pthread_join(threads[i], NULL) != 0)
+        error = 1;
+    }
+
+    if (error)
+    {
+      free(threads);
+      free(result);
+      return NULL;
     }
   }
 
-  int error = 0;
-  for (int i = 0; i < matSize; i++)
-  {
-    if (pthread_join(threads[i], NULL) != 0)
-      error = 1;
-  }
-
   free(threads);
-  if (error)
-  {
-    free(result);
-    return NULL;
-  }
-
   return result;
 }
 
